@@ -1,56 +1,71 @@
-import { ethers } from 'ethers';
-import { useEffect, useState } from 'react';
-import deploy from './deploy';
-import Escrow from './Escrow';
+import { ethers } from "ethers"
+import { useEffect, useState } from "react"
+import deploy from "./deploy"
+import Escrow from "./Escrow"
 
-const provider = new ethers.providers.Web3Provider(window.ethereum);
+const provider = new ethers.providers.Web3Provider(window.ethereum)
+
+function getEscrows() {
+  return JSON.parse(localStorage.getItem("escrows"))
+}
+
+function saveEscrows(escrows) {
+  localStorage.setItem("escrows", JSON.stringify(escrows))
+}
+
+function clearEscrows() {
+  localStorage.removeItem("escrows")
+}
 
 export async function approve(escrowContract, signer) {
-  const approveTxn = await escrowContract.connect(signer).approve();
-  await approveTxn.wait();
+  const approveTxn = await escrowContract.connect(signer).approve()
+  await approveTxn.wait()
 }
 
 function App() {
-  const [escrows, setEscrows] = useState([]);
-  const [account, setAccount] = useState();
-  const [signer, setSigner] = useState();
+  const [escrows, setEscrows] = useState(() => {
+    return getEscrows() || []
+  })
+  const [account, setAccount] = useState()
+  const [signer, setSigner] = useState()
+
+  const [arbiter, setArbiter] = useState("")
+  const [beneficiary, setBeneficiary] = useState("")
+  const [depositAmount, setDepositAmount] = useState("")
 
   useEffect(() => {
     async function getAccounts() {
-      const accounts = await provider.send('eth_requestAccounts', []);
+      const accounts = await provider.send("eth_requestAccounts", [])
 
-      setAccount(accounts[0]);
-      setSigner(provider.getSigner());
+      setAccount(accounts[0])
+      setSigner(provider.getSigner())
     }
 
-    getAccounts();
-  }, [account]);
+    getAccounts()
+  }, [account])
+
+  useEffect(() => {
+    saveEscrows(escrows)
+  }, [escrows])
 
   async function newContract() {
-    const beneficiary = document.getElementById('beneficiary').value;
-    const arbiter = document.getElementById('arbiter').value;
-    const value = ethers.BigNumber.from(document.getElementById('wei').value);
-    const escrowContract = await deploy(signer, arbiter, beneficiary, value);
-
+    const value = ethers.utils.parseEther(depositAmount)
+    const escrowContract = await deploy(signer, arbiter, beneficiary, value)
+    await escrowContract.deployed()
 
     const escrow = {
       address: escrowContract.address,
       arbiter,
       beneficiary,
       value: value.toString(),
-      handleApprove: async () => {
-        escrowContract.on('Approved', () => {
-          document.getElementById(escrowContract.address).className =
-            'complete';
-          document.getElementById(escrowContract.address).innerText =
-            "✓ It's been approved!";
-        });
+    }
 
-        await approve(escrowContract, signer);
-      },
-    };
+    setEscrows([...escrows, escrow])
+  }
 
-    setEscrows([...escrows, escrow]);
+  const clearContracts = () => {
+    clearEscrows()
+    setEscrows([])
   }
 
   return (
@@ -59,43 +74,51 @@ function App() {
         <h1> New Contract </h1>
         <label>
           Arbiter Address
-          <input type="text" id="arbiter" />
+          <input type="text" onChange={(e) => setArbiter(e.target.value)} />
         </label>
 
         <label>
           Beneficiary Address
-          <input type="text" id="beneficiary" />
+          <input type="text" onChange={(e) => setBeneficiary(e.target.value)} />
         </label>
 
         <label>
-          Deposit Amount (in Wei)
-          <input type="text" id="wei" />
+          Deposit Amount (in Eth)
+          <input
+            type="text"
+            onChange={(e) => setDepositAmount(e.target.value)}
+          />
         </label>
 
         <div
           className="button"
           id="deploy"
           onClick={(e) => {
-            e.preventDefault();
+            e.preventDefault()
 
-            newContract();
+            newContract()
           }}
         >
           Deploy
+        </div>
+        <div className="button" onClick={clearContracts}>
+          Clear contracts
         </div>
       </div>
 
       <div className="existing-contracts">
         <h1> Existing Contracts </h1>
 
-        <div id="container">
-          {escrows.map((escrow) => {
-            return <Escrow key={escrow.address} {...escrow} />;
-          })}
-        </div>
+        {signer && (
+          <div id="container">
+            {escrows.map((escrow) => {
+              return <Escrow key={escrow.address} {...escrow} signer={signer} />
+            })}
+          </div>
+        )}
       </div>
     </>
-  );
+  )
 }
 
-export default App;
+export default App
